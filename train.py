@@ -77,7 +77,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             viewpoint_stack = scene.getTrainCameras().copy()
         viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack)-1))
 
-        # Render
+        # Render RGB
         if (iteration - 1) == debug_from:
             pipe.debug = True
 
@@ -86,10 +86,23 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         render_pkg = render(viewpoint_cam, gaussians, pipe, bg)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
+        # Render depth (standardized between 0 and 1)
+        distances = torch.norm(gaussians.get_xyz - viewpoint_cam.T, p=2, dim=-1, keepdim=True)
+        render_depth_pkg = render(viewpoint_cam, gaussians, pipe, bg, override_color=distances)
+        depth = render_depth_pkg["render"]
+
+        depth = (depth - torch.min(depth)) / (torch.max(depth) - torch.min(depth))
+
         # Loss
         gt_image = viewpoint_cam.original_image.cuda()
+
+        gt_depth = viewpoint_cam.mono_depth.cuda()
+        gt_depth = (gt_depth - torch.min(gt_depth)) / (torch.max(gt_depth) - torch.min(gt_depth))
+
         Ll1 = l1_loss(image, gt_image)
-        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
+        loss = (1.0 - opt.lambda_dssim) * Ll1
+        loss += opt.lambda_dssim * (1.0 - ssim(image, gt_image))
+        loss += 0.1 * l1_loss(depth, gt_depth)
         loss.backward()
 
         iter_end.record()
