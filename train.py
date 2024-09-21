@@ -102,7 +102,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         Ll1 = l1_loss(image, gt_image)
         loss = (1.0 - opt.lambda_dssim) * Ll1
         loss += opt.lambda_dssim * (1.0 - ssim(image, gt_image))
-        loss += 0.1 * l1_loss(depth, gt_depth)
+        loss += opt.lambda_depth * l1_loss(depth, gt_depth)
         loss.backward()
 
         iter_end.record()
